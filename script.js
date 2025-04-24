@@ -1,263 +1,226 @@
-const algorithm = document.getElementById('select-algorithm');
-const numOfFrames = document.getElementById('num-of-frames');
-const refString = document.getElementById('ref-string');
-const separator = document.getElementById('separator');
-let refStringArray = refString.value.split(separator.value);
-let frames = parseInt(numOfFrames.value);
-const genRefBtn = document.getElementById('gen-ref');
+// DOM Elements
+const elements = {
+    algorithm: document.getElementById('select-algorithm'),
+    numOfFrames: document.getElementById('num-of-frames'),
+    refString: document.getElementById('ref-string'),
+    separator: document.getElementById('separator'),
+    visualPageFrames: document.getElementById('visual-page-frames'),
+    conclusion: document.getElementById('conclusion'),
+    frameInfo: document.getElementById('frame-info'),
+    frameSubInfo: document.getElementById('frame-sub-info'),
+    runBtn: document.getElementById('runBtn'),
+};
 
-const visualPageFrames = document.getElementById('visual-page-frames');
-const conclusion = document.getElementById('conclusion');
+// State
+let refStringArray = elements.refString.value.split(elements.separator.value || " ");
+let frames = parseInt(elements.numOfFrames.value);
 
-const frameInfo = document.getElementById('frame-info');
-const frameSubInfo = document.getElementById('frame-sub-info');
+const createEmptyFrame = () => ['-', '-'];
 
-// generate a random page-reference string where page numbers range from 0 to 9.
-function generateRefString() {
-  let randomRefString = "";
-  for (let i = 0; i < 20; i++) {
-    randomRefString += Math.floor(Math.random() * 10) + ", ";
-  }
-  randomRefString = randomRefString.slice(0, -2);
-  return randomRefString;
-}
+const initializeFrames = (count) => Array(count).fill().map(createEmptyFrame);
 
-function visulize(refStringArray, frames, algorithm) {
-  let pageFaults = 0;
-  let isDrawn = false;
-  // Initial frames
-  let prevPageFrame = new Array(frames);
-  for (let i = 0; i < frames; i++) {
-    prevPageFrame[i] = ["-", "-"];
-  }
-  let currentPageFrame = new Array(frames);
-  for (let i = 0; i < frames; i++) {
-    currentPageFrame[i] = ["-", "-"];
-  }
-  // Page Frames
-  visualPageFrames.innerHTML = "";
-  for (let i = 0; i < refStringArray.length; i++) {
-    // Calculate current page frame
-    let isFull = (prevPageFrame.findIndex((item) => item[0] == "-") == -1);
-    if (algorithm == 'FIFO') {
-      prevPageFrame = currentPageFrame;
-      let indexOfRef = prevPageFrame.findIndex((item) => item[0] == refStringArray[i]);
-      if (indexOfRef == -1) { // Page Fault, not found
-        pageFaults++;
-        isDrawn = true;
-        if (!isFull) { // Page Frame is not full
-          prevPageFrame[prevPageFrame.findIndex((item) => item[0] == "-")] = [refStringArray[i], i];
-        } else { // Page Frame is full
-          // Find the first-in page frame
-          let firstInFrameIndex = prevPageFrame.findIndex((item) => item[1] == Math.min(...prevPageFrame.map((item) => item[1])));
-          prevPageFrame[firstInFrameIndex] = [refStringArray[i], i];
+const findFrameIndex = (frames, condition) => frames.findIndex(condition);
+
+const getMinValueIndex = (frames, accessor) =>
+    findFrameIndex(frames, (item) => item[1][accessor] === Math.min(...frames.map((f) => f[1][accessor])));
+
+const getMaxValueIndex = (frames, accessor) =>
+    findFrameIndex(frames, (item) => item[1][accessor] === Math.max(...frames.map((f) => f[1][accessor])));
+
+// Page Replacement Algorithms
+const algorithms = {
+    FIFO: (prevFrame, ref, index, isFull) => {
+        const frame = [...prevFrame];
+        const refIndex = findFrameIndex(frame, (item) => item[0] === ref);
+        if (refIndex === -1) {
+            const targetIndex = isFull
+                ? getMinValueIndex(frame, 1)
+                : findFrameIndex(frame, (item) => item[0] === '-');
+            frame[targetIndex] = [ref, index];
         }
-      }
-      currentPageFrame = prevPageFrame;
-      frameSubInfo.innerHTML = "first-in index";
-    } else if (algorithm == 'LRU') {
-      prevPageFrame = currentPageFrame;
-      let indexOfRef = prevPageFrame.findIndex((item) => item[0] == refStringArray[i]);
-      if (indexOfRef == -1) { // Page Fault, not found
-        pageFaults++;
-        isDrawn = true;
-        if (!isFull) { // Page Frame is not full
-          prevPageFrame[prevPageFrame.findIndex((item) => item[0] == "-")] = [refStringArray[i], i];
-        } else { // Page Frame is full
-          // Find the least-recently used page frame
-          let leastRecentlyUsedFrameIndex = prevPageFrame.findIndex((item) => item[1] == Math.min(...prevPageFrame.map((item) => item[1])));
-          prevPageFrame[leastRecentlyUsedFrameIndex] = [refStringArray[i], i];
+        elements.frameSubInfo.innerHTML = '(first-in index)';
+        return frame;
+    },
+
+    LRU: (prevFrame, ref, index, isFull) => {
+        const frame = [...prevFrame];
+        const refIndex = findFrameIndex(frame, (item) => item[0] === ref);
+        if (refIndex === -1) {
+            const targetIndex = isFull
+                ? getMinValueIndex(frame, 1)
+                : findFrameIndex(frame, (item) => item[0] === '-');
+            frame[targetIndex] = [ref, index];
+        } else {
+            frame[refIndex][1] = index;
         }
-      } else { // Page Hit, found
-        prevPageFrame[indexOfRef][1] = i;
-      }
-      currentPageFrame = prevPageFrame;
-      frameSubInfo.innerHTML = "least recent index";
-    } else if (algorithm == 'MRU') {
-      prevPageFrame = currentPageFrame;
-      let indexOfRef = prevPageFrame.findIndex((item) => item[0] == refStringArray[i]);
-      if (indexOfRef == -1) { // Page Fault, not found
-        pageFaults++;
-        isDrawn = true;
-        if (!isFull) { // Page Frame is not full
-          prevPageFrame[prevPageFrame.findIndex((item) => item[0] == "-")] = [refStringArray[i], i];
-        } else { // Page Frame is full
-          // Find the most-recently used page frame
-          let mostRecentlyUsedFrameIndex = prevPageFrame.findIndex((item) => item[1] == Math.max(...prevPageFrame.map((item) => item[1])));
-          prevPageFrame[mostRecentlyUsedFrameIndex] = [refStringArray[i], i];
+        elements.frameSubInfo.innerHTML = '(least recent index)';
+        return frame;
+    },
+
+    MRU: (prevFrame, ref, index, isFull) => {
+        const frame = [...prevFrame];
+        const refIndex = findFrameIndex(frame, (item) => item[0] === ref);
+        if (refIndex === -1) {
+            const targetIndex = isFull
+                ? getMaxValueIndex(frame, 1)
+                : findFrameIndex(frame, (item) => item[0] === '-');
+            frame[targetIndex] = [ref, index];
+        } else {
+            frame[refIndex][1] = index;
         }
-      } else { // Page Hit, found
-        prevPageFrame[indexOfRef][1] = i;
-      }
-      currentPageFrame = prevPageFrame;
-      frameSubInfo.innerHTML = "least recent index";
-    } else if (algorithm == 'LFU') {
-      prevPageFrame = currentPageFrame;
-      let indexOfRef = prevPageFrame.findIndex((item) => item[0] == refStringArray[i]);
-      if (indexOfRef == -1) { // Page Fault, not found
-        pageFaults++;
-        isDrawn = true;
-        if (!isFull) { // Page Frame is not full
-          prevPageFrame[prevPageFrame.findIndex((item) => item[0] == "-")] = [refStringArray[i], [1, i]]; // [frequency, first-in index]
-        } else { // Page Frame is full
-          // Find the least-frequently used page frames
-          let leastFrequentlyUsedFrames = prevPageFrame.filter((item) => item[1][0] == Math.min(...prevPageFrame.map((item) => item[1][0])));
-          // Find the oldest page frame in the least-frequently used page frames
-          let victimFrame = leastFrequentlyUsedFrames.find((item) => item[1][1] == Math.min(...leastFrequentlyUsedFrames.map((item) => item[1][1])));
-          // Find the index of the victim page frame
-          let victimFrameIndex = prevPageFrame.findIndex((item) => item[0] == victimFrame[0]);
-          prevPageFrame[victimFrameIndex] = [refStringArray[i], [1, i]];
+        elements.frameSubInfo.innerHTML = '(most recent index)';
+        return frame;
+    },
+
+    LFU: (prevFrame, ref, index, isFull) => {
+        const frame = [...prevFrame];
+        const refIndex = findFrameIndex(frame, (item) => item[0] === ref);
+        if (refIndex === -1) {
+            if (!isFull) {
+                frame[findFrameIndex(frame, (item) => item[0] === '-')] = [ref, [1, index]];
+            } else {
+                const leastFrequent = frame.filter((item) => item[1][0] === Math.min(...frame.map((f) => f[1][0])));
+                const victim = leastFrequent.find((item) => item[1][1] === Math.min(...leastFrequent.map((f) => f[1][1])));
+                frame[findFrameIndex(frame, (item) => item[0] === victim[0])] = [ref, [1, index]];
+            }
+        } else {
+            frame[refIndex][1][0]++;
         }
-      } else { // Page Hit, found
-        prevPageFrame[indexOfRef][1][0]++;
-      }
-      currentPageFrame = prevPageFrame;
-      frameSubInfo.innerHTML = "frequency, first-in index";
-    } else if (algorithm == 'MFU') {
-      prevPageFrame = currentPageFrame;
-      let indexOfRef = prevPageFrame.findIndex((item) => item[0] == refStringArray[i]);
-      if (indexOfRef == -1) { // Page Fault, not found
-        pageFaults++;
-        isDrawn = true;
-        if (!isFull) { // Page Frame is not full
-          prevPageFrame[prevPageFrame.findIndex((item) => item[0] == "-")] = [refStringArray[i], [1, i]]; // [frequency, first-in index]
-        } else { // Page Frame is full
-          // Find the most-frequently used page frames
-          let mostFrequentlyUsedFrames = prevPageFrame.filter((item) => item[1][0] == Math.max(...prevPageFrame.map((item) => item[1][0])));
-          // Find the oldest page frame in the most-frequently used page frames
-          let victimFrame = mostFrequentlyUsedFrames.find((item) => item[1][1] == Math.min(...mostFrequentlyUsedFrames.map((item) => item[1][1])));
-          // Find the index of the victim page frame
-          let victimFrameIndex = prevPageFrame.findIndex((item) => item[0] == victimFrame[0]);
-          prevPageFrame[victimFrameIndex] = [refStringArray[i], [1, i]];
+        elements.frameSubInfo.innerHTML = '(frequency, first-in index)';
+        return frame;
+    },
+
+    MFU: (prevFrame, ref, index, isFull) => {
+        const frame = [...prevFrame];
+        const refIndex = findFrameIndex(frame, (item) => item[0] === ref);
+        if (refIndex === -1) {
+            if (!isFull) {
+                frame[findFrameIndex(frame, (item) => item[0] === '-')] = [ref, [1, index]];
+            } else {
+                const mostFrequent = frame.filter((item) => item[1][0] === Math.max(...frame.map((f) => f[1][0])));
+                const victim = mostFrequent.find((item) => item[1][1] === Math.min(...mostFrequent.map((f) => f[1][1])));
+                frame[findFrameIndex(frame, (item) => item[0] === victim[0])] = [ref, [1, index]];
+            }
+        } else {
+            frame[refIndex][1][0]++;
         }
-      } else { // Page Hit, found
-        prevPageFrame[indexOfRef][1][0]++;
-      }
-      currentPageFrame = prevPageFrame;
-      frameSubInfo.innerHTML = "frequency, first-in index";
-    } else if (algorithm == '2ND') {
-      prevPageFrame = currentPageFrame;
-      let indexOfRef = prevPageFrame.findIndex((item) => item[0] == refStringArray[i]);
-      let refPointer = 1;
-      if (indexOfRef == -1) { // Page Fault, not found
-        pageFaults++;
-        isDrawn = true;
-        if (!isFull) { // Page Frame is not full
-          prevPageFrame[prevPageFrame.findIndex((item) => item[0] == "-")] = [refStringArray[i], [1, i]]; // refference bit, first-in index
-        } else { // Page Frame is full
-          // Find the oldest page frame as the first refPointer
-          refPointer = prevPageFrame.findIndex((item) => item[1][1] == Math.min(...prevPageFrame.map((item) => item[1][1])));
-          while (prevPageFrame[refPointer][1][0] == 1) { // If refference bit is 1 then change it to 0
-            prevPageFrame[refPointer][1][0] = 0;
-            refPointer = (refPointer + 1) % frames;
-          }
-          // If refference bit is 0 then replace it
-          prevPageFrame[refPointer] = [refStringArray[i], [1, i]];
+        elements.frameSubInfo.innerHTML = '(frequency, first-in index)';
+        return frame;
+    },
+
+    '2ND': (prevFrame, ref, index, isFull, frameCount) => {
+        const frame = [...prevFrame];
+        const refIndex = findFrameIndex(frame, (item) => item[0] === ref);
+        if (refIndex === -1) {
+            if (!isFull) {
+                frame[findFrameIndex(frame, (item) => item[0] === '-')] = [ref, [1, index]];
+            } else {
+                let refPointer = getMinValueIndex(frame, 1);
+                while (frame[refPointer][1][0] === 1) {
+                    frame[refPointer][1][0] = 0;
+                    refPointer = (refPointer + 1) % frameCount;
+                }
+                frame[refPointer] = [ref, [1, index]];
+            }
+        } else {
+            frame[refIndex] = [ref, [1, index]];
         }
-      } else { // Page Hit, found
-        // Do nothing
-      }
-      currentPageFrame = prevPageFrame
-      frameSubInfo.innerHTML = "reference bit, first-in index";
-    } else if (algorithm == 'OPT') {
-      // Change "&infin;" to "Infinity" to make it work
-      prevPageFrame = currentPageFrame.map((item) => item[1][0] == "&infin;" ? [item[0], [Infinity, item[1][1]]] : item);
-      let indexOfRef = prevPageFrame.findIndex((item) => item[0] == refStringArray[i]);
-      if (indexOfRef == -1) { // Page Fault, not found
-        pageFaults++;
-        isDrawn = true;
-        if (!isFull) { // Page Frame is not full
-          prevPageFrame[prevPageFrame.findIndex((item) => item[0] == "-")] = [refStringArray[i], [0, i]]; // distance with next string refference item, first-in index AND distance will be updated later
-        } else { // Page Frame is full
-          // Find index of the page frames with the longest distance with next string refference item
-          // console.log(prevPageFrame);
-          let longestDistanceFrames = prevPageFrame.filter((item) => item[1][0] == Math.max(...prevPageFrame.map((item) => item[1][0])));
-          // console.log(longestDistanceFrames);
-          let victimFrame = longestDistanceFrames.find((item) => item[1][1] == Math.min(...longestDistanceFrames.map((item) => item[1][1])));
-          // console.log(victimFrame);
-          // Find index of victim frame in prevPageFrame
-          let victimFrameIndex = prevPageFrame.findIndex((item) => item[0] == victimFrame[0]);
-          prevPageFrame[victimFrameIndex] = [refStringArray[i], [0, i]]; // distance will be updated later
+        elements.frameSubInfo.innerHTML = '(reference bit, first-in index)';
+        return frame;
+    },
+
+    OPT: (prevFrame, ref, index, isFull) => {
+        const frame = prevFrame.map((item) => item[1][0] === '∞' ? [item[0], [Infinity, item[1][1]]] : item);
+        const refIndex = findFrameIndex(frame, (item) => item[0] === ref);
+        if (refIndex === -1) {
+            if (!isFull) {
+                frame[findFrameIndex(frame, (item) => item[0] === '-')] = [ref, [0, index]];
+            } else {
+                const longestDistance = frame.filter((item) => item[1][0] === Math.max(...frame.map((f) => f[1][0])));
+                const victim = longestDistance.find((item) => item[1][1] === Math.min(...longestDistance.map((f) => f[1][1])));
+                frame[findFrameIndex(frame, (item) => item[0] === victim[0])] = [ref, [0, index]];
+            }
         }
-      } else { // Page Hit, found
-        // isDrawn = true;
-      }
-      // Update distance with next string refference item
-      for (let j = 0; j < prevPageFrame.length; j++) {
-        if (prevPageFrame[j][0] != "-") {
-          prevPageFrame[j][1][0] = (distanceRef(i + 1, prevPageFrame[j][0]) == Infinity) ? "&infin;" : distanceRef(i + 1, prevPageFrame[j][0]);
+        for (let j = 0; j < frame.length; j++) {
+            if (frame[j][0] !== '-') {
+                frame[j][1][0] = distanceToNextRef(index + 1, frame[j][0]) === Infinity ? '∞' : distanceToNextRef(index + 1, frame[j][0]);
+            }
         }
-      }
-      currentPageFrame = prevPageFrame;
-      frameSubInfo.innerHTML = "distance with next string refference item, first-in index";
+        elements.frameSubInfo.innerHTML = '(distance with next string reference item, first-in index)';
+        return frame;
+    },
+};
+
+const visualize = (refs, frameCount, algo) => {
+    let pageFaults = 0;
+    let currentFrame = initializeFrames(frameCount);
+    elements.visualPageFrames.innerHTML = '';
+
+    // Initialize table structure
+    let tableHTML = '<table class="table-auto border-collapse border border-primary w-full text-center">';
+    tableHTML += '<thead><tr><th class="border border-primary">Step</th><th class="border border-primary">Reference</th>';
+
+    for (let i = 0; i < frameCount; i++) {
+        tableHTML += `<th class="border border-primary">Frame ${i + 1}</th>`;
     }
-    // Draw current page frame
-    let pageFrame = "";
-    for (let k = 0; k < frames; k++) {
-      // console.log(currentPageFrame[k]);
-      let data = currentPageFrame[k][0];
-      let subData = currentPageFrame[k][1];
-      pageFrame += `<div class="border-solid border border-primary text-center">${data} <div class="text-xs text-info text-center">${subData}</div></div> `;
+
+    tableHTML += '</tr></thead><tbody>';
+
+    refs.forEach((ref, i) => {
+        const isFull = findFrameIndex(currentFrame, (item) => item[0] === '-') === -1;
+        const prevFrame = [...currentFrame];
+        const refIndex = findFrameIndex(prevFrame, (item) => item[0] === ref);
+
+        currentFrame = algorithms[algo](prevFrame, ref, i, isFull, frameCount);
+
+        const isPageFault = refIndex === -1;
+        if (isPageFault) pageFaults++;
+
+        // Add a row for this reference with order number
+        tableHTML += `<tr class="${isPageFault ? '' : 'opacity-50'}">`;
+        tableHTML += `<td class="border border-primary">${i + 1}</td>`;  // Reference step
+        tableHTML += `<td class="border border-primary font-bold">${ref}</td>`;
+
+        currentFrame.forEach(([data, subData]) => {
+            tableHTML += `
+                <td class="border border-primary">
+                    ${data}
+                    <div class="text-info">(${subData})</div>
+                </td>`;
+        });
+
+        tableHTML += '</tr>';
+    });
+
+    tableHTML += '</tbody></table>';
+    elements.visualPageFrames.innerHTML = tableHTML;
+
+    // Display summary info
+    elements.conclusion.innerHTML = `
+        <div>Total references: ${refs.length}</div>
+        <div>Page Faults: ${pageFaults}</div>
+        <div>Fault Rate: ${Math.round((pageFaults / refs.length) * 100)}%</div>
+    `;
+
+    // Optional styling
+    elements.frameInfo.className = 'border-solid border border-primary text-center max-w-fit m-auto px-2';
+};
+
+
+const distanceToNextRef = (startIndex, frameNumber) => {
+    for (let i = startIndex; i < refStringArray.length; i++) {
+        if (refStringArray[i] === frameNumber) return i - startIndex;
     }
-    if (isDrawn) {
-      visualPageFrames.innerHTML += `<div><div class="font-bold mb-1">${refStringArray[i]}</div><div class="block ml-[12px] min-w-[24px]">${pageFrame}</div></div> `;
-      isDrawn = false;
-    } else {
-      visualPageFrames.innerHTML += `<div><div class="font-bold mb-1">${refStringArray[i]}</div><div class="block ml-[12px] min-w-[24px] opacity-0">${pageFrame}</div></div> `;
+    return Infinity;
+};
+
+// Event Handlers
+const updateVisualization = () => {
+    refStringArray = elements.refString.value.split(elements.separator.value);
+    frames = parseInt(elements.numOfFrames.value);
+    if (elements.algorithm.value !== 'none') {
+        visualize(refStringArray, frames, elements.algorithm.value);
     }
-  }
-  // Show conclusion
-  conclusion.innerHTML = `<div>Total references: ${refStringArray.length}</div> <div>Page Faults: ${pageFaults}</div> <div>Fault Rate: ${Math.round(pageFaults / refStringArray.length * 100)}%</div>`;
-  // Display frame info
-  frameInfo.className = "border-solid border border-primary text-center max-w-fit m-auto px-2";
-}
+};
 
-function distanceRef(reffItemIndex, thisFrameNumber) {
-  let distance = 0;
-  for (let i = reffItemIndex; i < refStringArray.length; i++) {
-    if (refStringArray[i] == thisFrameNumber) {
-      return distance;
-    }
-    distance++;
-  }
-  return Infinity;
-}
-
-// console.log(distanceRef(0, 0));
-
-genRefBtn.addEventListener('click', () => {
-  refString.value = generateRefString();
-  refStringArray = refString.value.split(separator.value);
-  visulize(refStringArray, frames, algorithm.value);
-})
-
-algorithm.addEventListener('change', () => {
-  refStringArray = refString.value.split(separator.value);
-  frames = parseInt(numOfFrames.value);
-  // console.log(refStringArray, frames);
-  visulize(refStringArray, frames, algorithm.value);
-});
-
-numOfFrames.addEventListener('change', () => {
-  frames = parseInt(numOfFrames.value);
-  // console.log(refStringArray, frames);
-  if (algorithm.value != 'none') {
-    visulize(refStringArray, frames, algorithm.value);
-  }
-});
-
-refString.addEventListener('change', () => {
-  refStringArray = refString.value.split(separator.value);
-  // console.log(refStringArray, frames);
-  if (algorithm.value != 'none') {
-    visulize(refStringArray, frames, algorithm.value);
-  }
-});
-
-separator.addEventListener('change', () => {
-  refStringArray = refString.value.split(separator.value);
-  // console.log(refStringArray, frames);
-  if (algorithm.value != 'none') {
-    visulize(refStringArray, frames, algorithm.value);
-  }
-});
+elements.runBtn.addEventListener('click', updateVisualization);
